@@ -4,6 +4,40 @@ import { collection, getDocs, addDoc } from "firebase/firestore";
 
 function App() {
 
+  /* ================= PWA INSTALL ================= */
+
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setCanInstall(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handler);
+
+    return () =>
+      window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const installApp = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+
+    if (choice.outcome === "accepted") {
+      console.log("App installed");
+    }
+
+    setDeferredPrompt(null);
+    setCanInstall(false);
+  };
+
+  /* ================= APP STATE ================= */
+
   const [page, setPage] = useState("home");
   const [proverbs, setProverbs] = useState([]);
   const [search, setSearch] = useState("");
@@ -29,7 +63,8 @@ function App() {
     "Humor"
   ];
 
-  // Fetch Proverbs
+  /* ================= FETCH ================= */
+
   useEffect(() => {
     const fetchProverbs = async () => {
       const querySnapshot = await getDocs(collection(db, "proverbs"));
@@ -43,13 +78,31 @@ function App() {
     fetchProverbs();
   }, []);
 
-  // Load Favorites
+  /* ================= FAVORITES ================= */
+
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem("favorites")) || [];
     setFavorites(saved);
   }, []);
 
-  // Proverb of the Day
+  const toggleLike = (proverb) => {
+    let updated;
+
+    if (favorites.some(item => item.id === proverb.id)) {
+      updated = favorites.filter(item => item.id !== proverb.id);
+    } else {
+      updated = [...favorites, proverb];
+    }
+
+    localStorage.setItem("favorites", JSON.stringify(updated));
+    setFavorites(updated);
+  };
+
+  const isFavorite = (id) =>
+    favorites.some(item => item.id === id);
+
+  /* ================= DAILY PROVERB ================= */
+
   useEffect(() => {
     if (proverbs.length === 0) return;
 
@@ -67,18 +120,7 @@ function App() {
     }
   }, [proverbs]);
 
-  const toggleLike = (proverb) => {
-    let updated;
-
-    if (favorites.some(item => item.id === proverb.id)) {
-      updated = favorites.filter(item => item.id !== proverb.id);
-    } else {
-      updated = [...favorites, proverb];
-    }
-
-    localStorage.setItem("favorites", JSON.stringify(updated));
-    setFavorites(updated);
-  };
+  /* ================= SHARE ================= */
 
   const handleShare = (proverb) => {
     const message = `Njuno Cia Kĩmĩrũ
@@ -94,6 +136,8 @@ Shared from Njuno App`;
     window.open(url, "_blank");
   };
 
+  /* ================= FILTER ================= */
+
   const filteredProverbs = proverbs.filter((p) => {
     const matchesSearch =
       p.ameru_text?.toLowerCase().includes(search.toLowerCase()) ||
@@ -106,6 +150,8 @@ Shared from Njuno App`;
 
     return matchesSearch && matchesCategory;
   });
+
+  /* ================= SUBMIT ================= */
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -120,8 +166,7 @@ Shared from Njuno App`;
     });
   };
 
-  const isFavorite = (id) =>
-    favorites.some(item => item.id === id);
+  /* ================= UI ================= */
 
   return (
     <div
@@ -159,14 +204,19 @@ Shared from Njuno App`;
         </button>
       </div>
 
+      {/* Install Button */}
+      {canInstall && (
+        <button onClick={installApp} style={installButton}>
+          📱 Install Njuno App
+        </button>
+      )}
+
+      {/* HOME PAGE */}
       {page === "home" && (
         <>
           <h1 style={{ color: darkMode ? "#C19A6B" : "#8B5E34" }}>
             Njuno Cia Kĩmĩrũ
           </h1>
-          <p style={{ fontStyle: "italic" }}>
-            Preserving Ameru Wisdom for Future Generations
-          </p>
 
           {dailyProverb && (
             <div style={dailyCard}>
@@ -184,112 +234,32 @@ Shared from Njuno App`;
             style={inputStyle}
           />
 
-          <div style={{ marginBottom: "30px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: "20px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: selectedCategory === cat ? "#8B5E34" : "#E0D6C8",
-                  color: selectedCategory === cat ? "white" : "#333"
-                }}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
           {filteredProverbs.map(proverb => (
             <div key={proverb.id} style={cardStyle(darkMode)}>
               <h3>{proverb.ameru_text}</h3>
               <p><strong>English:</strong> {proverb.english_translation}</p>
               <p><strong>Meaning:</strong> {proverb.polished_translation}</p>
-              <p>{proverb.explanation}</p>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <button onClick={() => toggleLike(proverb)}>
                   {isFavorite(proverb.id) ? "❤️" : "🤍"}
                 </button>
+
                 <button onClick={() => handleShare(proverb)}>
                   Share to WhatsApp
                 </button>
               </div>
             </div>
           ))}
-
-          <div style={submitStyle(darkMode)}>
-            <h2>🏡 Submit a Proverb</h2>
-            <form onSubmit={handleSubmit}>
-              {Object.keys(form).map(key => (
-                <input
-                  key={key}
-                  name={key}
-                  placeholder={key.replace("_", " ")}
-                  value={form[key]}
-                  onChange={(e) =>
-                    setForm({ ...form, [e.target.name]: e.target.value })
-                  }
-                  style={inputStyle}
-                />
-              ))}
-              <button type="submit" style={submitButton}>
-                Submit
-              </button>
-            </form>
-          </div>
         </>
-      )}
-
-      {page === "about" && (
-        <div style={{ lineHeight: "1.8" }}>
-          <h1 style={{ color: darkMode ? "#C19A6B" : "#8B5E34" }}>
-            🏛 About Ameru Culture
-          </h1>
-
-          <p>
-            The Ameru people are a Bantu-speaking community located primarily
-            on the eastern slopes of Mount Kenya in Kenya.
-          </p>
-
-          <p>
-            Ameru culture is rich in oral traditions, storytelling,
-            proverbs (Njuno), songs, and communal values that guide social life,
-            leadership, morality, and family structure.
-          </p>
-
-          <p>
-            Proverbs play a central role in teaching wisdom, discipline,
-            courage, humility, and unity across generations.
-          </p>
-
-          <p>
-            This platform — Njuno Cia Kĩmĩrũ — was created to preserve,
-            document, and digitally archive Ameru wisdom so that future
-            generations can continue learning from their heritage.
-          </p>
-
-          <p>
-            By digitizing proverbs and encouraging community contributions,
-            we ensure that cultural knowledge is not lost in the modern era.
-          </p>
-
-          <h3>🌍 Our Mission</h3>
-          <p>
-            To preserve, celebrate, and promote Ameru cultural wisdom
-            through technology.
-          </p>
-        </div>
       )}
 
     </div>
   );
 }
 
-// Styles
+/* ================= STYLES ================= */
+
 const navButton = {
   marginRight: "10px",
   padding: "6px 14px",
@@ -298,6 +268,16 @@ const navButton = {
   cursor: "pointer",
   background: "#8B5E34",
   color: "white"
+};
+
+const installButton = {
+  padding: "10px 18px",
+  borderRadius: "20px",
+  border: "none",
+  background: "#8B5E34",
+  color: "white",
+  cursor: "pointer",
+  marginTop: "15px"
 };
 
 const dailyCard = {
@@ -323,21 +303,5 @@ const cardStyle = (darkMode) => ({
   marginBottom: "25px",
   borderLeft: `6px solid ${darkMode ? "#C19A6B" : "#8B5E34"}`
 });
-
-const submitStyle = (darkMode) => ({
-  marginTop: "60px",
-  padding: "30px",
-  background: darkMode ? "#2A2A2A" : "white",
-  borderRadius: "20px"
-});
-
-const submitButton = {
-  background: "#8B5E34",
-  color: "white",
-  padding: "10px 20px",
-  border: "none",
-  borderRadius: "20px",
-  cursor: "pointer"
-};
 
 export default App;
