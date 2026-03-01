@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { db } from "./firebase/config";
 import { collection, getDocs, addDoc } from "firebase/firestore";
-
+import { Analytics } from "@vercel/analytics/next"
 function App() {
 
   const [page, setPage] = useState("home");
